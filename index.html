@@ -147,6 +147,15 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 .diag{list-style:none;margin:0;padding:0;font-size:.92rem;display:flex;flex-direction:column;gap:4px}
 .diag li::before{content:"✎ ";color:var(--pen)}
 .diag em{font-style:normal;color:var(--pen)}
+
+.mk{gap:8px}
+.mk button[aria-pressed="true"].o{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.mk button[aria-pressed="true"].x{background:var(--pen-soft);border-color:var(--pen);color:var(--pen)}
+.tagbox{display:flex;flex-direction:column;gap:6px}
+.tag{min-height:38px;padding:4px 14px;border-radius:999px;font-size:.95rem}
+.tag[aria-pressed="true"]{background:var(--pen-soft);border-color:var(--pen);color:var(--pen)}
+.mnum{font-family:var(--f-display);color:var(--muted);font-size:1.5rem;text-align:center;line-height:1.2}
+.paperHint{font-size:1.05rem;border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;margin:0}
 </style>
 </head>
 <body>
@@ -172,6 +181,8 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <details>
       <summary>설정 · 자유 연습</summary>
       <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="row"><span class="label">쓰는 곳</span>
+          <div class="seg" id="segWhere"><button data-v="paper">종이 공책</button><button data-v="screen">화면에 입력</button></div></div>
         <div class="row"><span class="label">읽는 빠르기</span>
           <div class="seg" id="segRate"><button data-v="0.65">천천히</button><button data-v="0.85">보통</button><button data-v="1">빠르게</button></div></div>
         <div class="row" style="gap:18px">
@@ -211,9 +222,12 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <button class="big" id="btnPlay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>듣기</button>
       <button id="btnSlow">아주 천천히</button>
     </div>
-    <label for="answer" class="label">여기에 써요</label>
-    <input id="answer" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
-    <div id="live"></div>
+    <p class="paperHint" id="paperHint" hidden></p>
+    <div id="typeArea" style="display:flex;flex-direction:column;gap:8px">
+      <label for="answer" class="label">여기에 써요</label>
+      <input id="answer" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
+      <div id="live"></div>
+    </div>
     <div id="fb" hidden></div>
     <div class="row">
       <button id="btnPrev">이전</button>
@@ -221,6 +235,14 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     </div>
     <div class="row"><button class="ghost" id="btnPeek">보호자: 문제 보기</button><span class="peek" id="peek" hidden></span>
       <button class="ghost" id="btnQuit" style="margin-left:auto">그만하기</button></div>
+  </section>
+
+  <!-- 공책과 맞춰 보기 -->
+  <section class="sheet" id="sM" hidden>
+    <h2>공책과 맞춰 봐요</h2>
+    <p class="note" style="margin:0">공책에 쓴 답과 바른 답을 한 칸씩 비교해요. 맞으면 ○, 틀리면 ✗를 누르고 어디가 틀렸는지 골라요. 틀린 곳은 공책에 빨간 펜으로 고쳐 써요.</p>
+    <div class="items" id="markList"></div>
+    <div class="row"><button class="primary" id="btnMarkDone" disabled>채점 끝</button><span class="note" id="markLeft"></span></div>
   </section>
 
   <!-- 결과 -->
@@ -315,7 +337,7 @@ function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 const $=id=>document.getElementById(id);
 let sets=load('bs.sets',[DEFAULT_SET]);if(!sets.length)sets=[DEFAULT_SET];
 let curId=load('bs.cur',sets[0].id);
-let opts=Object.assign({rate:'0.85',twice:true,punct:true,shuffle:false},load('bs.opts',{}));
+let opts=Object.assign({where:'paper',rate:'0.85',twice:true,punct:true,shuffle:false},load('bs.opts',{}));
 let stats=load('bs.stats',{});   // {setId:{word:{ok,ng,streak}}}
 let wrongS=load('bs.wrongS',{}); // {setId:{sentence:true}}
 let logs=load('bs.log',[]);
@@ -373,7 +395,22 @@ function card(w){
     const x=el('span');x.append(ch+' = '+bare(d)+' + ');x.appendChild(el('b',null,JONG[d.jong]));sp.appendChild(x)});
   if(sp.childNodes.length)why.appendChild(sp);
   c.appendChild(why);return c}
-function itemEl(no,r,q){const w=el('div','item');
+function paperItem(no,r,q){const w=el('div','item');
+  const mk=el('div','mark',r.kind==='ok'?'○':'✓');const b=el('div','body');
+  let label='참 잘했어요';
+  if(r.kind!=='ok'){const parts=[];if(q.type==='word'||r.words.length)parts.push('받침 낱말');
+    if(r.tags.includes('space'))parts.push('띄어쓰기');if(r.tags.includes('punct'))parts.push('문장부호');if(r.tags.includes('other'))parts.push('글자');
+    if(!parts.length)parts.push('글자');const lastCh=parts[parts.length-1].slice(-1),d=dec(lastCh);
+    label=parts.join('·')+(d&&d.jong?'을':'를')+' 다시 봐요'}
+  b.appendChild(el('div','kind'+(r.kind==='ok'?' ok':''),no+'. '+label));
+  if(r.kind!=='ok')b.appendChild(el('div','sub','바른 답'));
+  b.appendChild(grid(r.c,null,'small'+(r.kind==='ok'?'':' answer')));
+  const notes=el('ul','diag');
+  const wl=q.type==='word'?(r.kind==='ok'?[]:[q.w]):q.item.w.filter(x=>r.words.includes(x.w));
+  wl.forEach(x=>{const li=el('li');li.appendChild(el('b',null,x.w));li.append(' · '+(x.s?'소리는 ['+x.s+'] · ':'')+(x.why||RULES[x.r].tip));notes.appendChild(li)});
+  if(notes.childNodes.length)b.appendChild(notes);
+  w.append(mk,b);return w}
+function itemEl(no,r,q){if(r.paper)return paperItem(no,r,q);const w=el('div','item');
   const mk=el('div','mark',r.kind==='ok'?'○':'✓');mk.setAttribute('aria-label',r.kind==='ok'?'정답':'다시');
   const b=el('div','body');
   b.appendChild(el('div','kind'+(r.kind==='ok'?' ok':''),no+'. '+(q.type==='word'&&r.kind!=='ok'?'받침을 다시 봐요':KIND[r.kind])));
@@ -409,7 +446,7 @@ const stopSpeak=()=>{speakToken++;if(hasTTS)speechSynthesis.cancel()};
 const STAGES=[
   {n:1,name:'소리와 글자 익히기',days:'금~월',desc:'받침 낱말 카드로 들리는 소리와 쓰는 글자 비교'},
   {n:2,name:'받침 낱말 받아쓰기',days:'화',desc:'헷갈리는 낱말만 하나씩 듣고 쓰고 바로 확인'},
-  {n:3,name:'실전 모의시험',days:'수',desc:'시험처럼 문장 전체를 다 쓰고 한꺼번에 채점'},
+  {n:3,name:'실전 모의시험',days:'수',desc:'시험처럼 공책에 문장을 다 쓰고 한꺼번에 채점'},
   {n:4,name:'틀린 것 마지막 점검',days:'목 아침',desc:'모의시험에서 틀린 문장과 헷갈리는 낱말만'}];
 const DAY_STAGE={5:1,6:1,0:1,1:1,2:2,3:3,4:4};
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -440,6 +477,7 @@ function renderHome(){
   $('weakBox').hidden=!weak.length;
   // 옵션
   $('segRate').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===String(opts.rate)));
+  $('segWhere').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===opts.where));
   $('optTwice').checked=opts.twice;$('optPunct').checked=opts.punct;$('optShuffle').checked=opts.shuffle;
   // 기록
   const lg=$('log');lg.innerHTML='';const mine=logs.filter(l=>l.set===s.id).slice(-12).reverse();
@@ -448,11 +486,12 @@ function renderHome(){
     li.appendChild(el('span','sc',l.score!=null?l.score+'점':'✓'));lg.appendChild(li)});
 }
 $('setSel').addEventListener('change',e=>{curId=e.target.value;save('bs.cur',curId);renderHome()});
+$('segWhere').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;opts.where=b.dataset.v;save('bs.opts',opts);renderHome()});
 $('segRate').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;opts.rate=b.dataset.v;save('bs.opts',opts);renderHome()});
 ['Twice','Punct','Shuffle'].forEach(k=>$('opt'+k).addEventListener('change',e=>{opts[k.toLowerCase()]=e.target.checked;save('bs.opts',opts)}));
 
 /* ---------- 화면 전환 ---------- */
-function show(id){['sStart','sL','sQ','sR','sE'].forEach(s=>$(s).hidden=s!==id);window.scrollTo(0,0)}
+function show(id){['sStart','sL','sQ','sM','sR','sE'].forEach(s=>$(s).hidden=s!==id);window.scrollTo(0,0)}
 function goHome(){stopSpeak();renderHome();show('sStart')}
 
 /* ---------- 1단계 카드 ---------- */
@@ -465,7 +504,8 @@ $('btnLearnDone').addEventListener('click',()=>{addLog(1,null,0);goHome()});
 $('btnLearnBack').addEventListener('click',goHome);
 
 /* ---------- 문제 진행 ---------- */
-let queue=[],idx=0,answers=[],checked=[],mode='each',stage=0,lastRes=[];
+let queue=[],idx=0,answers=[],checked=[],marks=[],revealed=[],mode='each',stage=0,lastRes=[];
+const paper=()=>opts.where!=='screen';
 const sentQ=items=>items.map(it=>({type:'sent',text:it.t,item:it}));
 const wordQ=ws=>ws.map(w=>({type:'word',text:w.w,w}));
 function fixQueue(){const s=cur(),ws=(wrongS[s.id]||{});
@@ -483,7 +523,7 @@ $('btnFreeWords').addEventListener('click',()=>begin(wordQ(allWords(cur())),'eac
 function begin(list,m,st){if(!list.length){goHome();return}
   queue=list.slice();mode=m;stage=st;
   if(opts.shuffle)for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]]}
-  idx=0;answers=Array(queue.length).fill('');checked=Array(queue.length).fill(null);show('sQ');renderQ(true)}
+  idx=0;answers=Array(queue.length).fill('');checked=Array(queue.length).fill(null);marks=[];revealed=[];show('sQ');renderQ(true)}
 function check(i){const q=queue[i];const r=judge(answers[i],q.text);
   if(q.type==='sent')r.diag=diagnose(answers[i],q.item.w);return r}
 function renderQ(autoplay){
@@ -491,14 +531,21 @@ function renderQ(autoplay){
   $('qn').textContent=idx+1;$('qt').textContent=queue.length;
   $('qKind').textContent=q.type==='word'?'낱말 받아쓰기':'문장 받아쓰기'+(mode==='all'?' · 다 쓰고 채점':'');
   $('dots').innerHTML='';queue.forEach((_,i)=>$('dots').appendChild(el('i',i===idx?'now':(answers[i]||checked[i])?'done':'')));
+  const P=paper();$('typeArea').hidden=P;$('paperHint').hidden=P&&(revealed[idx]||checked[idx])?true:!P;
+  $('paperHint').textContent='공책에 '+(idx+1)+'번을 쓰고, 들은 대로 써요.';
   $('answer').value=answers[idx];$('answer').disabled=!!checked[idx];
   $('peek').hidden=true;$('peek').textContent=q.text;$('btnPeek').textContent='보호자: 문제 보기';
   liveGrid();
-  const fb=$('fb');fb.innerHTML='';fb.hidden=!checked[idx];if(checked[idx])fb.appendChild(itemEl(idx+1,checked[idx],q));
+  const fb=$('fb');fb.innerHTML='';fb.hidden=!checked[idx]&&!revealed[idx];
+  if(checked[idx])fb.appendChild(itemEl(idx+1,checked[idx],q));
+  else if(revealed[idx])fb.appendChild(markEl(idx,()=>{$('btnNext').disabled=marks[idx].ok==null}));
   $('btnPrev').hidden=mode==='each';$('btnPrev').disabled=idx===0;
   const last=idx===queue.length-1;
-  $('btnNext').textContent=mode==='each'?(checked[idx]?(last?'결과 보기':'다음 문제'):'확인'):(last?'채점하기':'다음');
-  if(!checked[idx])$('answer').focus({preventScroll:true});
+  const btn=$('btnNext');btn.disabled=false;
+  if(P&&mode==='each'){btn.textContent=revealed[idx]?(last?'결과 보기':'다음 문제'):'다 썼어요 · 정답 보기';if(revealed[idx])btn.disabled=marks[idx].ok==null}
+  else if(P)btn.textContent=last?'다 썼어요 · 채점하기':'다 썼어요 · 다음';
+  else btn.textContent=mode==='each'?(checked[idx]?(last?'결과 보기':'다음 문제'):'확인'):(last?'채점하기':'다음');
+  if(!checked[idx]&&!P)$('answer').focus({preventScroll:true});
   if(autoplay)playCur(false)}
 const playCur=slow=>{const q=queue[idx];speak(q.text,slow?0.55:parseFloat(opts.rate),slow?1:(opts.twice?2:1))};
 function liveGrid(){const v=$('answer').value.replace(/\s+/g,' ').replace(/^ /,'');const l=$('live');l.innerHTML='';
@@ -512,25 +559,57 @@ $('btnPeek').addEventListener('click',()=>{const p=$('peek');p.hidden=!p.hidden;
 $('btnPrev').addEventListener('click',()=>{answers[idx]=$('answer').value;if(idx>0){idx--;renderQ(true)}});
 $('btnQuit').addEventListener('click',goHome);
 function next(){
+  if(paper()){
+    if(mode==='each'){
+      if(!revealed[idx]){revealed[idx]=true;stopSpeak();renderQ(false);return}
+      if(marks[idx].ok==null)return;
+      checked[idx]=paperRes(idx);
+      if(idx<queue.length-1){idx++;renderQ(true)}else finish();return}
+    if(idx<queue.length-1){idx++;renderQ(true);return}
+    showMark();return}
   answers[idx]=$('answer').value;
   if(mode==='each'&&!checked[idx]){checked[idx]=check(idx);stopSpeak();renderQ(false);$('btnNext').focus();return}
   if(idx<queue.length-1){idx++;renderQ(true);return}
   finish()}
 $('btnNext').addEventListener('click',next);
 
+function paperRes(i){const q=queue[i],m=marks[i];return{paper:true,kind:m.ok?'ok':'paperx',c:norm(q.text),words:m.ok?[]:m.words.slice(),tags:m.ok?[]:m.tags.slice()}}
+function markEl(i,onChange){
+  const q=queue[i],m=marks[i]=marks[i]||{ok:null,words:[],tags:[]};
+  const w=el('div','item');const b=el('div','body');
+  b.appendChild(el('div','sub','바른 답'));
+  b.appendChild(grid(norm(q.text),null,q.type==='word'?'':'small'));
+  if(q.type==='word'&&q.w.s)b.appendChild(el('div','note','소리 ['+q.w.s+'] · 글자 '+q.w.w));
+  const mk=el('div','row mk'),bo=el('button','o','○ 맞았어요'),bx=el('button','x','✗ 틀렸어요');mk.append(bo,bx);b.appendChild(mk);
+  const tags=el('div','tagbox');
+  if(q.type==='sent'){
+    tags.appendChild(el('div','sub','어디가 틀렸나요? 여러 개 골라도 돼요'));
+    const row=el('div','weak');
+    const mkTag=(label,key,list)=>{const t=el('button','tag',label);const on=()=>m[list].includes(key);t.setAttribute('aria-pressed',on());
+      t.addEventListener('click',()=>{if(on())m[list]=m[list].filter(k=>k!==key);else m[list].push(key);t.setAttribute('aria-pressed',on())});row.appendChild(t)};
+    q.item.w.forEach(x=>mkTag(x.w,x.w,'words'));
+    mkTag('띄어쓰기','space','tags');mkTag('문장부호','punct','tags');mkTag('다른 글자','other','tags');
+    tags.appendChild(row);b.appendChild(tags)}
+  const sync=()=>{bo.setAttribute('aria-pressed',m.ok===true);bx.setAttribute('aria-pressed',m.ok===false);tags.hidden=m.ok!==false;onChange&&onChange()};
+  bo.addEventListener('click',()=>{m.ok=true;sync()});bx.addEventListener('click',()=>{m.ok=false;sync()});
+  sync();w.append(el('div','mnum',String(i+1)),b);return w}
+function showMark(){stopSpeak();const box=$('markList');box.innerHTML='';
+  const upd=()=>{const left=queue.filter((_,i)=>!marks[i]||marks[i].ok==null).length;$('btnMarkDone').disabled=left>0;$('markLeft').textContent=left?left+'문제 남았어요':''};
+  queue.forEach((_,i)=>box.appendChild(markEl(i,upd)));upd();show('sM')}
+$('btnMarkDone').addEventListener('click',finish);
 function finish(){
   stopSpeak();const s=cur();
-  lastRes=queue.map((q,i)=>checked[i]||check(i));
+  lastRes=queue.map((q,i)=>checked[i]||(paper()?paperRes(i):check(i)));
   const ws=wrongS[s.id]=wrongS[s.id]||{};
   lastRes.forEach((r,i)=>{const q=queue[i];
     if(q.type==='word')bump(q.w.w,r.kind==='ok');
-    else{r.diag.forEach(d=>bump(d.w.w,d.st==='ok'));if(r.kind==='ok')delete ws[q.text];else ws[q.text]=true}});
+    else{if(r.paper)q.item.w.forEach(w=>bump(w.w,r.kind==='ok'||!r.words.includes(w.w)));else r.diag.forEach(d=>bump(d.w.w,d.st==='ok'));if(r.kind==='ok')delete ws[q.text];else ws[q.text]=true}});
   save('bs.stats',stats);save('bs.wrongS',wrongS);
   const ok=lastRes.filter(r=>r.kind==='ok').length,sc=Math.round(ok/queue.length*100);
   addLog(stage,sc,queue.length);
   $('score').textContent=sc;const m=$('scoreMsg');m.innerHTML='';
   m.appendChild(el('strong',null,queue.length+'문제 중 '+ok+'문제 맞았어요.'));
-  m.appendChild(el('p','note',sc===100?'하나도 안 틀렸어요!':'빨간 칸은 틀린 곳, 초록 칸은 바르게 고친 곳이에요. ∨ 표시는 띄어쓰기 자리예요.'));
+  m.appendChild(el('p','note',sc===100?'하나도 안 틀렸어요!':paper()?'틀린 문장은 바른 답을 보고 공책에 한 번 더 써 봐요.':'빨간 칸은 틀린 곳, 초록 칸은 바르게 고친 곳이에요. ∨ 표시는 띄어쓰기 자리예요.'));
   const box=$('items');box.innerHTML='';lastRes.forEach((r,i)=>box.appendChild(itemEl(i+1,r,queue[i])));
   $('btnRetryWrong').hidden=ok===queue.length;show('sR')}
 $('btnRetryWrong').addEventListener('click',()=>begin(queue.filter((_,i)=>lastRes[i].kind!=='ok'),'each',stage));
