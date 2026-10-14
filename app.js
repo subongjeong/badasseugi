@@ -40,10 +40,34 @@ function ruleFor(w,s){
 function trickIdx(w,s){const W=[...w];
   if(s){const S=[...s];if(S.length===W.length)return W.map((c,i)=>c!==S[i]?i:-1).filter(i=>i>=0)}
   const out=[];W.forEach((c,i)=>{const d=dec(c);if(!d||!d.jong)return;if(ruleFor(W.slice(i,i+2).join(''),null))out.push(i)});return out}
+const CHOS='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const DOUBLE='ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ';
+const PAIR={'ㄳ':'ㄱㅅ','ㄵ':'ㄴㅈ','ㄶ':'ㄴㅎ','ㄺ':'ㄹㄱ','ㄻ':'ㄹㅁ','ㄼ':'ㄹㅂ','ㄽ':'ㄹㅅ','ㄾ':'ㄹㅌ','ㄿ':'ㄹㅍ','ㅀ':'ㄹㅎ','ㅄ':'ㅂㅅ'};
+const ro=x=>{const d=dec((x||'').slice(-1));return d&&d.jong&&d.jong!==8?'으로':'로'};
+// 글자와 소리를 비교해 아이용 설명을 만든다 (예: ㅌ 받침이 뒤로 넘어가 [튼]으로 들려요.)
+function autoWhy(w,s){const W=[...w],S=[...(s||'')];if(!s||W.length!==S.length)return'';const out=[];let skipCho=-1;
+  for(let k=0;k<W.length&&out.length<3;k++){if(W[k]===S[k])continue;const a=dec(W[k]),b=dec(S[k]);if(!a||!b)continue;
+    const J=JONG[a.jong],SJ=JONG[b.jong],nx=W[k+1]?dec(W[k+1]):null,snx=S[k+1]?dec(S[k+1]):null;
+    if(J&&J!==SJ){
+      if(nx&&nx.cho===11&&snx&&snx.cho!==11){const tail=' 뒤로 넘어가 ['+S[k+1]+']'+ro(S[k+1])+' 들려요';
+        if(J==='ㄶ'||J==='ㅀ')out.push(J+' 받침의 ㅎ은 소리가 안 나고, '+PAIR[J][0]+'이'+tail);
+        else if(DOUBLE.includes(J))out.push(J+' 받침 중 '+PAIR[J][1]+'이'+tail);
+        else out.push(J+' 받침이'+tail);skipCho=k+1;continue}
+      if(DOUBLE.includes(J)&&SJ){out.push(J+' 두 받침 중 ['+SJ+']만 들려요');continue}
+      if(!SJ&&nx&&snx&&'ㅋㅌㅊㅍㅆ'.includes(CHOS[snx.cho])){out.push(J+' 받침과 '+CHOS[nx.cho]+'이 만나 ['+S[k+1]+']'+ro(S[k+1])+' 들려요');skipCho=k+1;continue}
+      if(SJ){out.push(W[k]+'의 '+J+' 받침이 ['+SJ+']처럼 들려요');continue}
+      if(nx&&nx.cho===11){out.push(J+' 받침 소리가 사라진 것처럼 들려요');continue}
+    }else if(a.cho!==b.cho&&k!==skipCho){out.push('['+S[k]+']'+ro(S[k])+' 세게 들려도 글자는 '+W[k]+(hasJong(W[k])?'이에요':'예요'))}
+  }
+  return out.length?out.join(', ')+'.':''}
+// 문장에서 소리와 글자가 다른 낱말을 찾는다. 발음(s)이 없으면 자동으로 만든다.
 function buildWords(t,s){
+  const auto=!s&&window.Pron;if(auto)s=window.Pron.sentence(t);
   const tw=strip(t).split(' ').filter(Boolean),sw=s?strip(s).split(' ').filter(Boolean):null,out=[];
-  tw.forEach((w,i)=>{const p=sw&&sw.length===tw.length?sw[i]:null;if(p&&p===w)return;const r=ruleFor(w,p);if(r)out.push({w,s:p,r})});
+  tw.forEach((w,i)=>{const p=sw&&sw.length===tw.length?sw[i]:null;if(p&&p===w)return;
+    const r=ruleFor(w,p)||(p?'change':null);if(!r)return;out.push({w,s:p,r,why:p?autoWhy(w,p):''})});
   return out}
+function makeItem(t,s){t=norm(t);const auto=!s;if(!s&&window.Pron)s=window.Pron.sentence(t);return{t,s:s||null,w:buildWords(t,s),auto}}
 
 /* ---------- 기본 급수 (2학년 4급 마음을 전해요) ---------- */
 const DEFAULT_SET={level:'4급',title:'마음을 전해요',items:[
@@ -74,7 +98,7 @@ let toastT=0;function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=f
 /* ---------- 저장소 ---------- */
 const CFG=window.BADASSEUGI_CONFIG||{};
 let sb=null;
-try{if(window.supabase&&CFG.supabaseUrl&&CFG.supabaseKey)sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey)}catch(e){sb=null}
+try{if(window.supabase&&CFG.supabaseUrl&&CFG.supabaseKey)sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'badasseugi-auth'}})}catch(e){sb=null}
 const must=({data,error})=>{if(error)throw error;return data};
 
 const Guest={
@@ -106,7 +130,7 @@ const Cloud={
       sb.from('word_results').select('word,sound,rule,ok,how,set_id,session_id,created_at').eq('child_id',cid).order('created_at').limit(10000),
       sb.from('item_results').select('item_type,text,ok,tags,set_id,session_id,created_at').eq('child_id',cid).order('created_at').limit(10000)]);
     return{sets:must(sets),sessions:must(sessions),wres:must(wres),ires:must(ires)}},
-  async saveSet(s){const row={child_id:s.child_id,level:s.level,title:s.title,items:s.items,real_score:s.real_score??null,updated_at:nowIso()};
+  async saveSet(s){const row={child_id:s.child_id,level:s.level,title:s.title,items:s.items,real_score:s.real_score??null,test_date:s.test_date??null,catalog_id:s.catalog_id??null,updated_at:nowIso()};
     if(s.id)return must(await sb.from('word_sets').update(row).eq('id',s.id).select().single());
     return must(await sb.from('word_sets').insert(row).select().single())},
   async delSet(id){must(await sb.from('word_sets').delete().eq('id',id))},
@@ -119,6 +143,30 @@ const Cloud={
     ir.forEach(x=>x.created_at=s.created_at);wr.forEach(x=>x.created_at=s.created_at);
     return{session:s,items:ir,words:wr}}
 };
+
+/* ---------- 공용 급수표 ---------- */
+let CATALOG=null,IS_ADMIN=false;
+async function loadCatalog(force){
+  if(CATALOG&&!force)return CATALOG;
+  try{CATALOG=sb?must(await sb.from('catalog_sets').select('*').order('grade').order('semester').order('level_no')):[]}catch(e){CATALOG=CATALOG||[]}
+  return CATALOG}
+async function checkAdmin(){IS_ADMIN=false;if(S.store!==Cloud||!sb)return;try{IS_ADMIN=!!must(await sb.rpc('is_catalog_admin'))}catch(e){}}
+const catName=c=>c.grade+'학년 '+c.semester+'학기 '+c.level_no+'급'+(c.title?' '+c.title:'');
+function catItems(c){return (c.items||[]).map(it=>it.w?it:makeItem(it.t,it.s||null))}
+async function importCatalog(c){
+  const have=S.sets.find(x=>x.catalog_id===c.id);if(have){S.setId=have.id;save('bs2.set.'+S.child.id,S.setId);return have}
+  const row=await S.store.saveSet({child_id:S.child.id,level:c.level_no+'급',title:c.title,items:catItems(c),catalog_id:c.id});
+  S.sets.push(row);S.setId=row.id;save('bs2.set.'+S.child.id,S.setId);return row}
+function nextCatalog(set){if(!set||!set.catalog_id||!CATALOG)return null;const c=CATALOG.find(x=>x.id===set.catalog_id);if(!c)return null;
+  const same=CATALOG.filter(x=>x.grade===c.grade&&x.semester===c.semester&&x.level_no>c.level_no).sort((a,b)=>a.level_no-b.level_no)[0];
+  return same||CATALOG.filter(x=>x.grade===c.grade&&x.semester>c.semester).sort((a,b)=>a.level_no-b.level_no)[0]||null}
+function renderCatList(box,grade,onPick){box.innerHTML='';
+  const list=(CATALOG||[]).filter(c=>!grade||c.grade===grade);
+  if(!list.length){box.appendChild(el('p','note','아직 이 학년 급수표가 없어요. 아래에 직접 입력해 주세요.'));return}
+  list.forEach(c=>{const have=S.sets.find(x=>x.catalog_id===c.id);
+    const b=el('button','catbtn'+(have?' have':''));b.appendChild(el('b',null,c.level_no+'급'));b.appendChild(el('span',null,c.title||''));
+    b.appendChild(el('small',null,c.grade+'학년 '+c.semester+'학기'+(have?' · 가져옴':'')));
+    b.addEventListener('click',async()=>{b.disabled=true;try{await onPick(c)}catch(e){toast('가져오지 못했어요. 다시 시도해 주세요.');b.disabled=false}});box.appendChild(b)})}
 
 /* ---------- 상태 ---------- */
 const S={store:null,email:'',children:[],child:null,sets:[],sessions:[],wres:[],ires:[],setId:null,stats:{},lastSent:{}};
@@ -224,11 +272,11 @@ function speak(text,rate,times){
 const stopSpeak=()=>{speakToken++;if(hasTTS)speechSynthesis.cancel()};
 
 /* ---------- 화면 전환 ---------- */
-const SCREENS=['sBoot','sAuth','sKids','sStart','sL','sQ','sM','sR','sStats','sE'];
+const SCREENS=['sBoot','sAuth','sKids','sPick','sStart','sL','sQ','sM','sR','sStats','sE'];
 function show(id){SCREENS.forEach(s=>$(s).hidden=s!==id);
   $('setbar').hidden=!['sStart','sL','sQ','sM','sR','sE'].includes(id)||!S.child;
   $('who').hidden=!S.store||id==='sAuth';window.scrollTo(0,0)}
-function setTitle(){const t=S.child?callName(S.child.name)+'의 받아쓰기 공부':'받아쓰기 공부';$('ttl').textContent=t;document.title=t}
+function setTitle(){const h=$('ttl');h.innerHTML='';if(S.child){h.appendChild(el('span','nm',callName(S.child.name)));h.append('의 받아쓰기 공부')}else h.append('받아쓰기 공부');document.title=h.textContent}
 function goHome(){stopSpeak();renderHome();show('sStart')}
 
 /* ---------- 로그인 ---------- */
@@ -269,8 +317,8 @@ $('btnLogout').addEventListener('click',async()=>{
   if(S.store===Cloud&&sb)await sb.auth.signOut().catch(()=>{});
   save('bs2.guest',false);Object.assign(S,{store:null,email:'',children:[],child:null,sets:[],sessions:[],wres:[],ires:[]});signUp=false;renderAuth()});
 
-async function enterCloud(){S.store=Cloud;const {data}=await sb.auth.getUser();S.email=(data&&data.user&&data.user.email)||'';$('whoMail').textContent=S.email;$('btnLogout').textContent='로그아웃';await loadKids()}
-async function enterGuest(){S.store=Guest;S.email='';$('whoMail').textContent='이 기기에만 저장';$('btnLogout').textContent='로그인하기';await loadKids()}
+async function enterCloud(){S.store=Cloud;const {data}=await sb.auth.getUser();S.email=(data&&data.user&&data.user.email)||'';$('whoMail').textContent=S.email;$('btnLogout').textContent='로그아웃';checkAdmin();loadCatalog();await loadKids()}
+async function enterGuest(){S.store=Guest;S.email='';$('whoMail').textContent='이 기기에만 저장';$('btnLogout').textContent='로그인하기';IS_ADMIN=false;loadCatalog();await loadKids()}
 
 /* ---------- 아이 ---------- */
 async function loadKids(){
@@ -289,9 +337,15 @@ $('btnKids').addEventListener('click',()=>{stopSpeak();renderKids()});
 async function selectChild(c,isNew){
   S.child=c;save('bs2.child.'+S.store.kind,c.id);setTitle();show('sBoot');
   try{Object.assign(S,await S.store.loadChild(c.id))}catch(e){toast('기록을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');S.sets=[];S.sessions=[];S.wres=[];S.ires=[]}
-  if(!S.sets.length){try{S.sets=[await S.store.saveSet(Object.assign({child_id:c.id},JSON.parse(JSON.stringify(DEFAULT_SET))))]}catch(e){toast('기본 급수를 만들지 못했어요.')}}
+  if(!S.sets.length){const cat=(await loadCatalog()).filter(x=>!c.grade||x.grade===c.grade);
+    if(cat.length){renderCatList($('pickList'),c.grade,async x=>{await importCatalog(x);rebuild();goHome()});setTitle();show('sPick');return}
+    await seedDefault()}
   S.setId=load('bs2.set.'+c.id,null);if(!S.sets.find(s=>s.id===S.setId))S.setId=S.sets.length?S.sets[S.sets.length-1].id:null;
   rebuild();goHome()}
+
+async function seedDefault(){try{const c4=(CATALOG||[]).find(x=>x.grade===2&&x.semester===2&&x.level_no===4);
+  const row=await S.store.saveSet(Object.assign({child_id:S.child.id},JSON.parse(JSON.stringify(DEFAULT_SET)),c4?{catalog_id:c4.id}:{}));S.sets.push(row);S.setId=row.id}catch(e){toast('기본 급수를 만들지 못했어요.')}}
+$('btnPickSkip').addEventListener('click',async()=>{await seedDefault();rebuild();goHome()});
 
 /* ---------- 주간 계획 ---------- */
 const STAGES=[
@@ -324,14 +378,45 @@ function renderHome(){
   $('realScore').value=s.real_score??'';$('realMsg').textContent='';
   $('segRate').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===String(opts.rate)));
   $('segWhere').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===opts.where));
-  $('optTwice').checked=opts.twice;$('optPunct').checked=opts.punct;$('optShuffle').checked=opts.shuffle}
+  $('optTwice').checked=opts.twice;$('optPunct').checked=opts.punct;$('optShuffle').checked=opts.shuffle;
+  renderNext();renderCal()}
+function renderNext(){const b=$('btnNextSet'),nx=nextCatalog(cur());
+  if(!nx||cur().real_score==null||S.sets.some(x=>x.catalog_id===nx.id)){b.hidden=true;return}
+  b.hidden=false;b.textContent='다음 급수 시작: '+nx.level_no+'급 '+(nx.title||'');b.onclick=async()=>{b.disabled=true;try{await importCatalog(nx);goHome()}catch(e){toast('가져오지 못했어요.')}b.disabled=false}}
+
+/* ---------- 공부 달력 ---------- */
+let calOffset=0;
+function lastThursday(d){const x=new Date(d);x.setDate(x.getDate()-((x.getDay()-4+7)%7));return x}
+function renderCal(){
+  const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+calOffset,1),Y=base.getFullYear(),M=base.getMonth();
+  $('calMonth').textContent=Y+'년 '+(M+1)+'월';$('calNext').disabled=calOffset>=0;
+  const byDay={};S.sessions.forEach(x=>{const k=ymd(new Date(x.created_at));const d=byDay[k]=byDay[k]||{st:new Set(),mock:null};d.st.add(x.stage);if(x.mode==='all'&&x.score!=null)d.mock=x.score});
+  const tests={};S.sets.forEach(x=>{if(x.test_date&&x.real_score!=null)tests[x.test_date]=x});
+  const g=$('calGrid');g.innerHTML='';
+  WD.split('').forEach((w,i)=>g.appendChild(el('div','wd'+(i===4?' thu':''),w)));
+  for(let i=0;i<base.getDay();i++)g.appendChild(el('div','day blank'));
+  const days=new Date(Y,M+1,0).getDate(),today=ymd(now);let studied=0;
+  for(let d=1;d<=days;d++){const dt=new Date(Y,M,d),k=ymd(dt),info=byDay[k],t=tests[k];
+    const c=el('div','day'+(dt.getDay()===4?' thu':'')+(k===today?' today':'')+(info?' done':''));
+    c.appendChild(el('span','dn',String(d)));
+    if(info){studied++;const dots=el('span','dots2');[1,2,3,4,0].forEach(n=>{if(info.st.has(n))dots.appendChild(el('i','s'+n))});c.appendChild(dots);
+      if(info.mock!=null)c.appendChild(el('span','ms',info.mock+''))}
+    if(t){const st=el('span','stamp',String(t.real_score));st.title=(t.level||'')+' 실제 시험';c.appendChild(st)}
+    g.appendChild(c)}
+  // 연속 공부일 (오늘 또는 어제부터 거꾸로)
+  const set=new Set(Object.keys(byDay));let streak=0,cur0=new Date(now);if(!set.has(ymd(cur0)))cur0.setDate(cur0.getDate()-1);
+  while(set.has(ymd(cur0))){streak++;cur0.setDate(cur0.getDate()-1)}
+  $('calSum').textContent=(M+1)+'월에 '+studied+'일 공부했어요'+(streak>1&&calOffset===0?' · '+streak+'일 연속!':'')}
+$('calPrev').addEventListener('click',()=>{calOffset--;renderCal()});
+$('calNext').addEventListener('click',()=>{if(calOffset<0){calOffset++;renderCal()}});
 $('setSel').addEventListener('change',e=>{S.setId=e.target.value;save('bs2.set.'+S.child.id,S.setId);renderHome()});
 $('segWhere').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;opts.where=b.dataset.v;save('bs.opts',opts);renderHome()});
 $('segRate').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;opts.rate=b.dataset.v;save('bs.opts',opts);renderHome()});
 ['Twice','Punct','Shuffle'].forEach(k=>$('opt'+k).addEventListener('change',e=>{opts[k.toLowerCase()]=e.target.checked;save('bs.opts',opts)}));
 $('btnReal').addEventListener('click',async()=>{const v=$('realScore').value.trim(),s=cur();
   const n=v===''?null:Math.max(0,Math.min(100,Math.round(+v)));if(v!==''&&isNaN(n))return;
-  try{const row=await S.store.saveSet(Object.assign({},s,{real_score:n}));Object.assign(s,row);$('realMsg').textContent=n==null?'지웠어요':n+'점 기록했어요'}
+  const td=n==null?null:ymd(lastThursday(new Date()));
+  try{const row=await S.store.saveSet(Object.assign({},s,{real_score:n,test_date:td}));Object.assign(s,row);$('realMsg').textContent=n==null?'지웠어요':n+'점 기록했어요';renderCal();renderNext()}
   catch(e){$('realMsg').textContent='저장하지 못했어요'}});
 
 /* ---------- 1단계 카드 ---------- */
@@ -528,13 +613,31 @@ function scoreChart(pts,reals){
 /* ---------- 문장 바꾸기 ---------- */
 let delArmed=false;
 $('btnEdit').addEventListener('click',()=>{const s=cur();$('eLvl').value=s.level||'';$('eTtl').value=s.title||'';
-  $('eList').value=s.items.map(it=>it.t+(it.s&&it.s!==strip(it.t)?' ['+it.s+']':'')).join('\n');
+  $('eList').value=s.items.map(it=>it.t+(it.s&&!it.auto&&it.s!==strip(it.t)?' ['+it.s+']':'')).join('\n');
   delArmed=false;$('btnDelSet').textContent='이 급수 지우기';$('btnDelSet').hidden=S.sets.length<2;
-  $('editNote').textContent=S.store===Cloud?'계정에 저장돼요. 다른 기기에서도 같은 문장으로 연습해요.':'이 기기의 브라우저에만 저장돼요.';show('sE')});
+  $('editNote').textContent=S.store===Cloud?'계정에 저장돼요. 다른 기기에서도 같은 문장으로 연습해요.':'이 기기의 브라우저에만 저장돼요.';
+  $('catGrade').value=String(S.child.grade||2);drawCat();renderPreview();
+  $('adminBox').hidden=!IS_ADMIN;const c=(CATALOG||[]).find(x=>x.id===s.catalog_id);
+  $('aGrade').value=c?c.grade:(S.child.grade||2);$('aSem').value=c?c.semester:(new Date().getMonth()>=7||new Date().getMonth()<1?2:1);$('aLevel').value=c?c.level_no:(parseInt(s.level)||'');
+  show('sE');loadCatalog(true).then(drawCat)});
+function drawCat(){renderCatList($('catList'),+$('catGrade').value,async c=>{await importCatalog(c);goHome();toast(c.level_no+'급을 가져왔어요')})}
+$('catGrade').addEventListener('change',drawCat);
+function renderPreview(){const box=$('pronPreview');box.innerHTML='';
+  const lines=$('eList').value.split('\n').map(norm).filter(Boolean);if(!lines.length)return;
+  box.appendChild(el('div','sub','자동으로 만든 발음 (틀리면 문장 뒤에 [발음]을 직접 붙여요)'));
+  lines.forEach(line=>{const m=line.match(/^(.*?)\s*\[([^\]]+)\]\s*$/),t=m?m[1]:line,sp=m?m[2]:(window.Pron?Pron.sentence(t):'');
+    const r=el('div','pv');r.appendChild(el('span',null,strip(t)));r.appendChild(el('b',null,'['+sp+']'));if(m)r.appendChild(el('small',null,'직접 입력'));box.appendChild(r)})}
+$('eList').addEventListener('input',renderPreview);
+$('btnPublish').addEventListener('click',async()=>{
+  const g=+$('aGrade').value,se=+$('aSem').value,lv=+$('aLevel').value;if(!(g>=1&&g<=6&&(se===1||se===2)&&lv>=1)){toast('학년·학기·급을 확인해 주세요.');return}
+  const items=parseItems(cur().items);if(!items.length){toast('문장을 먼저 입력해 주세요.');return}
+  try{const row=must(await sb.from('catalog_sets').upsert({grade:g,semester:se,level_no:lv,title:norm($('eTtl').value),items,updated_at:nowIso()},{onConflict:'grade,semester,level_no'}).select().single());
+    await loadCatalog(true);drawCat();toast(catName(row)+' 저장했어요')}
+  catch(e){toast('급수표에 저장하지 못했어요: '+((e&&e.message)||''))}});
 function parseItems(old){return $('eList').value.split('\n').map(norm).filter(Boolean).map(line=>{
   const m=line.match(/^(.*?)\s*\[([^\]]+)\]\s*$/),t=norm(m?m[1]:line),s=m?norm(m[2]):null;
   const prev=old.find(it=>it.t===t&&(!s||it.s===s));
-  return prev||{t,s,w:buildWords(t,s)}})}
+  return prev||makeItem(t,s)})}
 async function saveSet(asNew){const s=cur(),items=parseItems(s.items);if(!items.length){$('eList').focus();return}
   const data={child_id:S.child.id,level:norm($('eLvl').value),title:norm($('eTtl').value),items};
   try{

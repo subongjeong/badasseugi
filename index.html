@@ -5,8 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>시현이의 받아쓰기 공부</title>
 <meta name="description" content="초등 받아쓰기 연습. 소리와 글자가 다른 받침 낱말을 익히고, 목요일 시험에 맞춘 주간 연습 순서, 종이 공책 채점, 기록 분석을 제공해요.">
-<meta name="theme-color" content="#8C2B33">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238C2B33'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='white' font-family='sans-serif'%3E받%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#FF6B4A">
+<meta name="color-scheme" content="light">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="받아쓰기">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&family=Nanum+Pen+Script&display=swap">
@@ -15,7 +21,7 @@
 <body>
 <main class="wrap">
   <header class="top">
-    <h1 id="ttl">시현이의 받아쓰기 공부</h1>
+    <h1 id="ttl"><span class="nm">시현이</span>의 받아쓰기 공부</h1>
     <div class="who" id="who" hidden>
       <span id="whoMail"></span>
       <button class="ghost" id="btnKids">아이 바꾸기</button>
@@ -60,12 +66,28 @@
     <p class="note" id="kidsNote" style="margin:0">아이를 추가하면 4급 「마음을 전해요」 문장이 기본으로 들어가요.</p>
   </section>
 
+  <!-- 급수 고르기 -->
+  <section class="sheet" id="sPick" hidden>
+    <h2>지금 공부하는 급수를 골라요</h2>
+    <p class="note" style="margin:0">학교에서 받은 받아쓰기 급수표와 같은 급수를 고르면 돼요. 없으면 4급부터 시작하고 나중에 바꿀 수 있어요.</p>
+    <div class="catlist" id="pickList"></div>
+    <div class="row"><button class="ghost" id="btnPickSkip">기본(4급 마음을 전해요)으로 시작</button></div>
+  </section>
+
   <!-- 이번 주 -->
   <section class="sheet" id="sStart" hidden>
     <div class="dday"><b id="dday">목요일 시험까지 1일</b><span class="note" id="ddayDate"></span></div>
     <ol class="stages" id="stages"></ol>
     <p class="warn" id="voiceWarn" hidden>이 기기에서 한국어 목소리를 찾지 못했어요. 소리가 안 나오면 문제 화면의 "보호자: 문제 보기"를 눌러 직접 읽어 주세요.</p>
-    <div class="row"><button id="btnStats">기록 분석 보기</button></div>
+    <div class="row"><button class="primary" id="btnNextSet" hidden></button><button id="btnStats">기록 분석 보기</button></div>
+
+    <div class="cal" id="cal">
+      <div class="calhead"><h2>공부 달력</h2>
+        <div class="calnav"><button id="calPrev" aria-label="지난달">◀</button><b id="calMonth"></b><button id="calNext" aria-label="다음 달">▶</button></div></div>
+      <div class="calgrid" id="calGrid"></div>
+      <p class="note" id="calSum"></p>
+      <div class="legend"><span><i class="s1"></i>익히기</span><span><i class="s2"></i>낱말</span><span><i class="s3"></i>모의시험</span><span><i class="s4"></i>점검</span><span><i class="test"></i>목요일 시험</span></div>
+    </div>
 
     <div id="weakBox" hidden>
       <h2>아직 헷갈리는 받침 낱말</h2>
@@ -173,6 +195,11 @@
 
   <!-- 문장 바꾸기 -->
   <section class="sheet" id="sE" hidden>
+    <h2>급수표에서 가져오기</h2>
+    <div class="row"><label class="label" for="catGrade">학년</label>
+      <select id="catGrade"><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option><option value="4">4학년</option><option value="5">5학년</option><option value="6">6학년</option></select></div>
+    <div class="catlist" id="catList"></div>
+    <h2>직접 입력</h2>
     <p class="note">한 줄에 한 문장씩, 띄어쓰기와 문장부호까지 정답 그대로 적어 주세요. 소리 나는 대로의 발음을 뒤에 [대괄호]로 붙이면 받침 카드와 오답 분석이 더 정확해져요.<br>예) 냄새 맡은 값 [냄새 마튼 갑]</p>
     <div class="row">
       <div class="field" style="flex:0 1 110px"><label class="label" for="eLvl">급수</label><input class="text" id="eLvl"></div>
@@ -180,12 +207,23 @@
     </div>
     <label class="label" for="eList">문장</label>
     <textarea id="eList" spellcheck="false"></textarea>
+    <div class="preview" id="pronPreview"></div>
     <div class="row">
       <button class="primary" id="btnSave">저장</button>
       <button id="btnNewSet">새 급수로 저장</button>
       <button id="btnCancel">취소</button>
     </div>
     <div class="row"><button class="ghost" id="btnDelSet">이 급수 지우기</button></div>
+    <div class="admin" id="adminBox" hidden>
+      <h2>공용 급수표에 올리기 (관리자)</h2>
+      <p class="note" style="margin:0">위 문장을 모든 가족이 가져갈 수 있는 급수표에 저장해요. 같은 학년·학기·급이 있으면 덮어써요.</p>
+      <div class="row">
+        <div class="field" style="flex:0 1 90px"><label class="label" for="aGrade">학년</label><input class="text" id="aGrade" type="number" min="1" max="6" value="2"></div>
+        <div class="field" style="flex:0 1 90px"><label class="label" for="aSem">학기</label><input class="text" id="aSem" type="number" min="1" max="2" value="2"></div>
+        <div class="field" style="flex:0 1 90px"><label class="label" for="aLevel">급</label><input class="text" id="aLevel" type="number" min="1" max="99"></div>
+        <button id="btnPublish">급수표에 저장</button>
+      </div>
+    </div>
     <p class="note" id="editNote"></p>
   </section>
 
@@ -195,6 +233,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
+<script src="pron.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -106,3 +106,42 @@ create policy "own item results" on public.item_results for all to authenticated
 create policy "own word results" on public.word_results for all to authenticated
   using (owner = (select auth.uid()))
   with check (owner = (select auth.uid()) and public.owns_child(child_id));
+
+-- =========================================================
+-- 공용 급수표 (누구나 읽기, 관리자만 쓰기)
+-- =========================================================
+create table public.catalog_admins (email text primary key);
+alter table public.catalog_admins enable row level security;
+create policy "see own admin row" on public.catalog_admins for select to authenticated
+  using (lower(email) = lower((select auth.jwt()) ->> 'email'));
+-- 관리자 이메일은 SQL Editor에서 직접 추가: insert into public.catalog_admins values ('you@example.com');
+
+create or replace function public.is_catalog_admin() returns boolean
+  language sql stable security invoker set search_path = '' as $$
+  select exists (select 1 from public.catalog_admins a where lower(a.email) = lower((select auth.jwt()) ->> 'email'))
+$$;
+revoke execute on function public.is_catalog_admin() from public, anon;
+grant execute on function public.is_catalog_admin() to authenticated;
+
+create table public.catalog_sets (
+  id          uuid primary key default gen_random_uuid(),
+  grade       int  not null check (grade between 1 and 6),
+  semester    int  not null check (semester in (1, 2)),
+  level_no    int  not null check (level_no between 1 and 99),
+  title       text not null default '',
+  items       jsonb not null default '[]'::jsonb,   -- [{t, s?, w?}] (s, w가 없으면 앱이 자동 발음으로 채움)
+  note        text,
+  updated_by  uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (grade, semester, level_no)
+);
+create index on public.catalog_sets (updated_by);
+alter table public.catalog_sets enable row level security;
+create policy "anyone reads catalog" on public.catalog_sets for select to anon, authenticated using (true);
+create policy "admins insert catalog" on public.catalog_sets for insert to authenticated with check ((select public.is_catalog_admin()));
+create policy "admins update catalog" on public.catalog_sets for update to authenticated using ((select public.is_catalog_admin())) with check ((select public.is_catalog_admin()));
+create policy "admins delete catalog" on public.catalog_sets for delete to authenticated using ((select public.is_catalog_admin()));
+
+alter table public.word_sets add column catalog_id uuid references public.catalog_sets(id) on delete set null;
+create index on public.word_sets (catalog_id);
