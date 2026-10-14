@@ -39,7 +39,7 @@
         const r=REP[m]||m;
         if(ASP[r]||m==='ㅈ'||m==='ㅊ'){
           let asp=m==='ㅈ'||m==='ㅊ'?'ㅊ':ASP[r];
-          if(r==='ㄷ'&&b.jung===20)asp='ㅊ';           // 닫히다 → [다치다]
+          if(r==='ㄷ'&&(b.jung===20||b.jung===6))asp='ㅊ'; // 닫히다 → [다치다], 묻혀 → [무쳐]
           b.cho=asp;a.jong=keep;continue}
       }
       // 3) 연음: 받침 + ㅇ

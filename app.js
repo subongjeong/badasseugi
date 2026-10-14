@@ -22,7 +22,8 @@ const RULES={
   double:{name:'두 개 받침',tip:'받침이 두 개인데 하나만 소리 나요. 안 들리는 받침도 꼭 써요.'},
   rough:{name:'ㅎ 만나면 세게',tip:'ㅎ과 ㄱ·ㄷ·ㅈ이 만나면 [ㅋ·ㅌ·ㅊ]처럼 세게 들려요.'},
   tense:{name:'된소리',tip:'[ㄲ·ㄸ·ㅃ·ㅆ·ㅉ]처럼 세게 들려도 글자는 원래대로 써요.'},
-  vowel:{name:'줄여 들리는 말',tip:'빨리 말하면 줄여서 들려도, 불러 준 대로 다 써요.'}
+  vowel:{name:'줄여 들리는 말',tip:'빨리 말하면 줄여서 들려도, 불러 준 대로 다 써요.'},
+  spell:{name:'헷갈리는 맞춤법',tip:'소리가 비슷한 다른 글자와 헷갈리기 쉬워요. 맞는 글자를 눈으로 익혀요.'}
 };
 function ruleFor(w,s){
   const W=[...w],S=s?[...s]:null,same=S&&S.length===W.length;
@@ -35,13 +36,15 @@ function ruleFor(w,s){
     if(nx&&(('ㅎㄶㅀ'.includes(J)&&[0,3,12].includes(nx.cho))||('ㄱㄷㅂㅈㅅ'.includes(J)&&nx.cho===18)))return'rough';
     if('ㅅㅆㅈㅊㅌㄲㅋㅍ'.includes(J)||(nx&&'ㄱㄷㅂ'.includes(J)&&[2,6].includes(nx.cho)))return'change';
   }
-  if(same&&W.some((c,i)=>c!==S[i]))return'tense';
+  if(same&&W.some((c,i)=>c!==S[i])){const T={'ㄱ':'ㄲ','ㄷ':'ㄸ','ㅂ':'ㅃ','ㅅ':'ㅆ','ㅈ':'ㅉ'},C='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+    return W.some((c,i)=>{const x=dec(c),y=dec(S[i]);return x&&y&&x.cho!==y.cho&&T[C[x.cho]]===C[y.cho]})?'tense':'change'}
   return null}
 function trickIdx(w,s){const W=[...w];
   if(s){const S=[...s];if(S.length===W.length)return W.map((c,i)=>c!==S[i]?i:-1).filter(i=>i>=0)}
   const out=[];W.forEach((c,i)=>{const d=dec(c);if(!d||!d.jong)return;if(ruleFor(W.slice(i,i+2).join(''),null))out.push(i)});return out}
 const CHOS='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 const DOUBLE='ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ';
+const TENSE_OF={'ㄱ':'ㄲ','ㄷ':'ㄸ','ㅂ':'ㅃ','ㅅ':'ㅆ','ㅈ':'ㅉ'};
 const PAIR={'ㄳ':'ㄱㅅ','ㄵ':'ㄴㅈ','ㄶ':'ㄴㅎ','ㄺ':'ㄹㄱ','ㄻ':'ㄹㅁ','ㄼ':'ㄹㅂ','ㄽ':'ㄹㅅ','ㄾ':'ㄹㅌ','ㄿ':'ㄹㅍ','ㅀ':'ㄹㅎ','ㅄ':'ㅂㅅ'};
 const ro=x=>{const d=dec((x||'').slice(-1));return d&&d.jong&&d.jong!==8?'으로':'로'};
 // 글자와 소리를 비교해 아이용 설명을 만든다 (예: ㅌ 받침이 뒤로 넘어가 [튼]으로 들려요.)
@@ -53,11 +56,17 @@ function autoWhy(w,s){const W=[...w],S=[...(s||'')];if(!s||W.length!==S.length)r
         if(J==='ㄶ'||J==='ㅀ')out.push(J+' 받침의 ㅎ은 소리가 안 나고, '+PAIR[J][0]+'이'+tail);
         else if(DOUBLE.includes(J))out.push(J+' 받침 중 '+PAIR[J][1]+'이'+tail);
         else out.push(J+' 받침이'+tail);skipCho=k+1;continue}
-      if(DOUBLE.includes(J)&&SJ){out.push(J+' 두 받침 중 ['+SJ+']만 들려요');continue}
+      if((J==='ㄶ'||J==='ㅀ')&&nx&&snx&&'ㅋㅌㅊ'.includes(CHOS[snx.cho])){out.push(J+' 받침의 ㅎ이 '+CHOS[nx.cho]+'과 만나 ['+S[k+1]+']'+ro(S[k+1])+' 들려요');skipCho=k+1;continue}
+      if(DOUBLE.includes(J)&&SJ&&PAIR[J].includes(SJ)){out.push(J+' 두 받침 중 ['+SJ+']만 들려요');continue}
+      if(DOUBLE.includes(J)&&SJ){out.push(W[k]+'의 '+J+' 받침이 ['+SJ+']처럼 들려요');continue}
       if(!SJ&&nx&&snx&&'ㅋㅌㅊㅍㅆ'.includes(CHOS[snx.cho])){out.push(J+' 받침과 '+CHOS[nx.cho]+'이 만나 ['+S[k+1]+']'+ro(S[k+1])+' 들려요');skipCho=k+1;continue}
       if(SJ){out.push(W[k]+'의 '+J+' 받침이 ['+SJ+']처럼 들려요');continue}
       if(nx&&nx.cho===11){out.push(J+' 받침 소리가 사라진 것처럼 들려요');continue}
-    }else if(a.cho!==b.cho&&k!==skipCho){out.push('['+S[k]+']'+ro(S[k])+' 세게 들려도 글자는 '+W[k]+(hasJong(W[k])?'이에요':'예요'))}
+    }else if(a.cho!==b.cho&&k!==skipCho){
+      const tense=TENSE_OF[CHOS[a.cho]]===CHOS[b.cho],pj=k>0&&dec(S[k-1])?JONG[dec(S[k-1]).jong]:'';
+      if(tense)out.push('['+S[k]+']'+ro(S[k])+' 세게 들려도 글자는 '+W[k]+(hasJong(W[k])?'이에요':'예요'));
+      else if(pj)out.push(pj+' 받침 뒤에서 '+CHOS[a.cho]+'이 ['+CHOS[b.cho]+']처럼 들려요');
+      else out.push(CHOS[a.cho]+'이 ['+CHOS[b.cho]+']처럼 들려요')}
   }
   return out.length?out.join(', ')+'.':''}
 // 문장에서 소리와 글자가 다른 낱말을 찾는다. 발음(s)이 없으면 자동으로 만든다.

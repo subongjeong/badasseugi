@@ -102,7 +102,7 @@ textarea{width:100%;min-height:13em;font-size:1.05rem;line-height:1.8}
 .chip.today{background:var(--coral);color:#fff;font-family:var(--f-display);font-size:.85rem;padding:1px 10px}
 .chip.r-link{background:var(--sky-soft);color:#1D5F92}.chip.r-change{background:var(--sun-soft);color:#86590A}
 .chip.r-double{background:var(--grape-soft);color:#5636B8}.chip.r-rough{background:var(--coral-soft);color:#B13A20}
-.chip.r-tense{background:var(--grass-soft);color:#1A7444}.chip.r-vowel{background:#EEF2F5;color:#44586A}
+.chip.r-tense{background:var(--grass-soft);color:#1A7444}.chip.r-spell{background:#FFE4F1;color:#A1306B}.chip.r-vowel{background:#EEF2F5;color:#44586A}
 .weak{display:flex;flex-wrap:wrap;gap:6px}
 .weak .chip{font-size:.98rem;padding:4px 12px;background:var(--pen-soft);color:var(--pen)}
 #weakBox{display:flex;flex-direction:column;gap:6px;background:var(--pen-soft);border-radius:16px;padding:14px}
