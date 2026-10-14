@@ -1,6 +1,6 @@
 # 받아쓰기 공책
 
-바로 쓰기 👉 **바로 쓰기: https://subongjeong.github.io/badasseugi/**
+👉 **바로 쓰기: https://subongjeong.github.io/badasseugi/**
 
 초등학교 저학년 받아쓰기 연습장입니다. 폰·태블릿·노트북 브라우저에서 바로 쓸 수 있고, 설치나 로그인이 필요 없습니다.
 
